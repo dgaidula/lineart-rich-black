@@ -157,15 +157,21 @@ export function toCmyk(img, opts = {}) {
 const T = { SHORT: 3, LONG: 4, RATIONAL: 5, UNDEFINED: 7 };
 
 function photoshopResources() {
+  // One 8BIM resource: 1006 (alpha channel names) = a single Pascal string.
+  // CRITICAL: the size field is the UNPADDED data length; the pad byte (to
+  // even) sits outside the declared size. Declaring the padded length makes
+  // strict parsers (InDesign) read a phantom empty second channel name and
+  // reject the file outright.
   const name = 'Transparency';
-  const data = Buffer.alloc(1 + name.length + ((1 + name.length) % 2));
+  const size = 1 + name.length;              // pascal string, unpadded
+  const data = Buffer.alloc(size + (size % 2));
   data[0] = name.length;
   data.write(name, 1, 'latin1');
   const head = Buffer.alloc(12);
   head.write('8BIM', 0, 'ascii');
-  head.writeUInt16BE(1006, 4);      // resource: alpha channel names
-  head.writeUInt16BE(0, 6);         // empty pascal resource name (padded)
-  head.writeUInt32BE(data.length, 8);
+  head.writeUInt16BE(1006, 4);
+  head.writeUInt16BE(0, 6);                  // empty pascal resource name + pad
+  head.writeUInt32BE(size, 8);               // UNPADDED size
   return Buffer.concat([head, data]);
 }
 
@@ -196,11 +202,13 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
     [259, T.SHORT, 1, compTag],
     [262, T.SHORT, 1, 5],                // PhotometricInterpretation: Separated (CMYK)
     [273, T.LONG, 1, stripOff],
+    [274, T.SHORT, 1, 1],                // Orientation: top-left
     [277, T.SHORT, 1, spp],              // SamplesPerPixel
     [278, T.LONG, 1, height],            // RowsPerStrip: single strip
     [279, T.LONG, 1, strip.length],
     [282, T.RATIONAL, 1, xResOff],
     [283, T.RATIONAL, 1, yResOff],
+    [284, T.SHORT, 1, 1],                // PlanarConfiguration: chunky
     [296, T.SHORT, 1, 2],                // ResolutionUnit: inch
     [332, T.SHORT, 1, 1],                // InkSet: CMYK
   ];

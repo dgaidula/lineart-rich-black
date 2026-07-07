@@ -209,7 +209,7 @@ test('CLI flags: formula, gates bare and valued, byte order, bad input errors', 
   }
 });
 
-test('--knockout adds unassociated alpha = ink coverage', () => {
+test('--knockout adds associated alpha = ink coverage', () => {
   const png = makePng(3, 1, 3, (x) => (x === 0 ? [0, 0, 0] : x === 1 ? [255, 255, 255] : [128, 128, 128]));
   const buf = convert(png, { formula: [20, 30, 20, 100], knockout: true });
   const t = readTiff(buf);
@@ -217,6 +217,15 @@ test('--knockout adds unassociated alpha = ink coverage', () => {
   assert.equal(t.tags[338].value, 1);          // ExtraSamples: ASSOCIATED alpha
   const ps = t.tags[34377];
   assert.ok(ps, 'Photoshop 8BIM resources present');
+  // walk the 8BIM block strictly: exactly one resource (1006), whose declared
+  // size is the UNPADDED pascal-string length, no trailing bytes beyond pad
+  const blk = buf.subarray(ps.value, ps.value + ps.count);
+  assert.equal(blk.toString('ascii', 0, 4), '8BIM');
+  assert.equal(blk.readUInt16BE(4), 1006);
+  const size = blk.readUInt32BE(8);
+  assert.equal(size, 1 + 'Transparency'.length);       // unpadded
+  assert.equal(blk[12], 'Transparency'.length);        // pascal len byte
+  assert.equal(12 + size + (size % 2), blk.length);    // pad accounted, nothing after
   assert.equal(t.tags[258].count, 5);          // 5 x 8-bit
   const px5 = (x) => Array.from(t.cmyk.subarray(x * 5, x * 5 + 5));
   assert.equal(px5(0)[4], 255);                // solid black: opaque

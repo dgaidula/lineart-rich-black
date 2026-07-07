@@ -215,17 +215,9 @@ test('--knockout adds associated alpha = ink coverage', () => {
   const t = readTiff(buf);
   assert.equal(t.tags[277].value, 5);          // SamplesPerPixel
   assert.equal(t.tags[338].value, 1);          // ExtraSamples: ASSOCIATED alpha
-  const ps = t.tags[34377];
-  assert.ok(ps, 'Photoshop 8BIM resources present');
-  // walk the 8BIM block strictly: exactly one resource (1006), whose declared
-  // size is the UNPADDED pascal-string length, no trailing bytes beyond pad
-  const blk = buf.subarray(ps.value, ps.value + ps.count);
-  assert.equal(blk.toString('ascii', 0, 4), '8BIM');
-  assert.equal(blk.readUInt16BE(4), 1006);
-  const size = blk.readUInt32BE(8);
-  assert.equal(size, 1 + 'Transparency'.length);       // unpadded
-  assert.equal(blk[12], 'Transparency'.length);        // pascal len byte
-  assert.equal(12 + size + (size % 2), blk.length);    // pad accounted, nothing after
+  // No Photoshop 8BIM block: InDesign rejects files whose 8BIM isn't a full
+  // Photoshop save, and ExtraSamples=1 alone provides working transparency.
+  assert.equal(t.tags[34377], undefined);
   assert.equal(t.tags[258].count, 5);          // 5 x 8-bit
   const px5 = (x) => Array.from(t.cmyk.subarray(x * 5, x * 5 + 5));
   assert.equal(px5(0)[4], 255);                // solid black: opaque

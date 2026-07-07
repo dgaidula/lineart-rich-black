@@ -156,24 +156,6 @@ export function toCmyk(img, opts = {}) {
 
 const T = { SHORT: 3, LONG: 4, RATIONAL: 5, UNDEFINED: 7 };
 
-function photoshopResources() {
-  // One 8BIM resource: 1006 (alpha channel names) = a single Pascal string.
-  // CRITICAL: the size field is the UNPADDED data length; the pad byte (to
-  // even) sits outside the declared size. Declaring the padded length makes
-  // strict parsers (InDesign) read a phantom empty second channel name and
-  // reject the file outright.
-  const name = 'Transparency';
-  const size = 1 + name.length;              // pascal string, unpadded
-  const data = Buffer.alloc(size + (size % 2));
-  data[0] = name.length;
-  data.write(name, 1, 'latin1');
-  const head = Buffer.alloc(12);
-  head.write('8BIM', 0, 'ascii');
-  head.writeUInt16BE(1006, 4);
-  head.writeUInt16BE(0, 6);                  // empty pascal resource name + pad
-  head.writeUInt32BE(size, 8);               // UNPADDED size
-  return Buffer.concat([head, data]);
-}
 
 /**
  * Encode a CMYK buffer as a single-strip baseline TIFF.
@@ -186,11 +168,9 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
   const compTag = compression === 'deflate' ? 8 : 1;
 
   const pad = (n) => n + (n % 2); // TIFF values must start on even offsets
-  const psBlock = (knockout || knockoutBg) ? photoshopResources() : null;
   const stripOff = 8;
   const iccOff = pad(stripOff + strip.length);
-  const psOff = pad(iccOff + (icc ? icc.length : 0));
-  const bitsOff = pad(psOff + (psBlock ? psBlock.length : 0));
+  const bitsOff = pad(iccOff + (icc ? icc.length : 0));
   const xResOff = bitsOff + spp * 2;     // spp x SHORT
   const yResOff = xResOff + 8;           // RATIONAL
   const ifdOff = yResOff + 8;
@@ -213,11 +193,12 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
     [332, T.SHORT, 1, 1],                // InkSet: CMYK
   ];
   if (knockout || knockoutBg) entries.push([338, T.SHORT, 1, 1]); // ExtraSamples: ASSOCIATED alpha
-  // (our alpha = ink coverage IS the premultiplied form: plates are already
-  // tint-scaled, i.e. formula x coverage. InDesign/Photoshop auto-honor
-  // ExtraSamples=1 as transparency; =2 shows as a dead spare channel.)
+  // Our alpha = ink coverage IS the premultiplied form (plates are already
+  // tint-scaled). ExtraSamples=1 alone is what InDesign auto-honors as
+  // transparency. Do NOT add a Photoshop 8BIM resources block (tag 34377):
+  // InDesign hard-rejects TIFFs whose 8BIM block doesn't look like a full
+  // Photoshop save — empirically A/B-tested; ES=1 needs no channel name.
   if (icc) entries.push([34675, T.UNDEFINED, icc.length, iccOff]);
-  if (psBlock) entries.push([34377, T.UNDEFINED, psBlock.length, psOff]);
   entries.sort((a, b) => a[0] - b[0]);
 
   const total = ifdOff + 2 + entries.length * 12 + 4;
@@ -230,7 +211,6 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
   w32(ifdOff, 4);
   strip.copy(buf, stripOff);
   if (icc) icc.copy(buf, iccOff);
-  if (psBlock) psBlock.copy(buf, psOff);
   for (let i = 0; i < spp; i++) w16(8, bitsOff + i * 2);
   w32(dpi, xResOff); w32(1, xResOff + 4);
   w32(dpi, yResOff); w32(1, yResOff + 4);

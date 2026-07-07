@@ -208,3 +208,25 @@ test('CLI flags: formula, gates bare and valued, byte order, bad input errors', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('--knockout adds unassociated alpha = ink coverage', () => {
+  const png = makePng(3, 1, 3, (x) => (x === 0 ? [0, 0, 0] : x === 1 ? [255, 255, 255] : [128, 128, 128]));
+  const buf = convert(png, { formula: [20, 30, 20, 100], knockout: true });
+  const t = readTiff(buf);
+  assert.equal(t.tags[277].value, 5);          // SamplesPerPixel
+  assert.equal(t.tags[338].value, 2);          // ExtraSamples: unassociated alpha
+  assert.equal(t.tags[258].count, 5);          // 5 x 8-bit
+  const px5 = (x) => Array.from(t.cmyk.subarray(x * 5, x * 5 + 5));
+  assert.equal(px5(0)[4], 255);                // solid black: opaque
+  assert.equal(px5(1)[4], 0);                  // paper: fully transparent
+  const midAlpha = px5(2)[4];
+  assert.ok(midAlpha > 100 && midAlpha < 150); // ~50% coverage
+  assert.deepEqual(px5(0).slice(0, 4), [51, 77, 51, 255]); // plates unchanged
+});
+
+test('without --knockout output stays 4-sample with no ExtraSamples', () => {
+  const png = makePng(1, 1, 3, () => [0, 0, 0]);
+  const t = readTiff(convert(png, {}));
+  assert.equal(t.tags[277].value, 4);
+  assert.equal(t.tags[338], undefined);
+});

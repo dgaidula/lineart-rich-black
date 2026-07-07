@@ -22,6 +22,11 @@
 //   --formula C,M,Y,K   plate percentages for solid black (default 20,30,20,100)
 //   --k-only            grays/edges ride the K plate alone (scaled by the
 //                       formula's K); solid blacks still get the full formula
+//   --knockout          add an unassociated alpha channel (ExtraSamples 2)
+//                       where alpha = ink coverage: paper is fully
+//                       transparent, solids opaque, anti-aliased edges
+//                       partial. Plates are unchanged, so the image still
+//                       looks correct in apps that ignore alpha.
 //   --gates [B,W]       svg-color-rinse-style snap: tints >=B% become solid,
 //                       <=W% become paper (default 80,10 when flag given)
 //   --drop-paper [T,S]  force light, low-saturation pixels (tint <= T%,
@@ -74,13 +79,15 @@ export function toCmyk(img, opts = {}) {
     kOnly = false,
     gates = null,          // [blackPct, whitePct] or null
     dropPaper = null,      // [maxTintPct, maxSatPct] or null
+    knockout = false,      // add unassociated alpha = ink coverage
   } = opts;
   const [fc, fm, fy, fk] = formula.map((v) => v / 100);
   const { width, height, channels, pixels } = img;
-  const out = Buffer.alloc(width * height * 4);
+  const spp = knockout ? 5 : 4;
+  const out = Buffer.alloc(width * height * spp);
   const solidAt = gates ? gates[0] / 100 : 0.99;
 
-  for (let p = 0, o = 0; p < width * height; p++, o += 4) {
+  for (let p = 0, o = 0; p < width * height; p++, o += spp) {
     const i = p * channels;
     let r, g, b, a = 255;
     if (channels === 1) { r = g = b = pixels[i]; }
@@ -112,6 +119,7 @@ export function toCmyk(img, opts = {}) {
       out[o + 2] = Math.round(tint * fy * 255);
       out[o + 3] = Math.round(tint * fk * 255);
     }
+    if (knockout) out[o + 4] = Math.round(tint * 255); // alpha = ink coverage
   }
   return out;
 }
@@ -125,7 +133,8 @@ const T = { SHORT: 3, LONG: 4, RATIONAL: 5, UNDEFINED: 7 };
  * opts: { dpi=600, littleEndian=true, compression='deflate'|'none', icc=Buffer|null }
  */
 export function encodeTiff(cmyk, width, height, opts = {}) {
-  const { dpi = 600, littleEndian = true, compression = 'deflate', icc = null } = opts;
+  const { dpi = 600, littleEndian = true, compression = 'deflate', icc = null, knockout = false } = opts;
+  const spp = knockout ? 5 : 4;
   const strip = compression === 'deflate' ? zlib.deflateSync(cmyk, { level: 9 }) : cmyk;
   const compTag = compression === 'deflate' ? 8 : 1;
 
@@ -133,18 +142,18 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
   const stripOff = 8;
   const iccOff = pad(stripOff + strip.length);
   const bitsOff = pad(iccOff + (icc ? icc.length : 0));
-  const xResOff = bitsOff + 8;           // 4 x SHORT
+  const xResOff = bitsOff + spp * 2;     // spp x SHORT
   const yResOff = xResOff + 8;           // RATIONAL
   const ifdOff = yResOff + 8;
 
   const entries = [
     [256, T.LONG, 1, width],
     [257, T.LONG, 1, height],
-    [258, T.SHORT, 4, bitsOff],          // 8,8,8,8 (out of line)
+    [258, T.SHORT, spp, bitsOff],        // 8 per sample (out of line)
     [259, T.SHORT, 1, compTag],
     [262, T.SHORT, 1, 5],                // PhotometricInterpretation: Separated (CMYK)
     [273, T.LONG, 1, stripOff],
-    [277, T.SHORT, 1, 4],                // SamplesPerPixel
+    [277, T.SHORT, 1, spp],              // SamplesPerPixel
     [278, T.LONG, 1, height],            // RowsPerStrip: single strip
     [279, T.LONG, 1, strip.length],
     [282, T.RATIONAL, 1, xResOff],
@@ -152,6 +161,7 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
     [296, T.SHORT, 1, 2],                // ResolutionUnit: inch
     [332, T.SHORT, 1, 1],                // InkSet: CMYK
   ];
+  if (knockout) entries.push([338, T.SHORT, 1, 2]); // ExtraSamples: unassociated alpha
   if (icc) entries.push([34675, T.UNDEFINED, icc.length, iccOff]);
   entries.sort((a, b) => a[0] - b[0]);
 
@@ -165,7 +175,7 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
   w32(ifdOff, 4);
   strip.copy(buf, stripOff);
   if (icc) icc.copy(buf, iccOff);
-  w16(8, bitsOff); w16(8, bitsOff + 2); w16(8, bitsOff + 4); w16(8, bitsOff + 6);
+  for (let i = 0; i < spp; i++) w16(8, bitsOff + i * 2);
   w32(dpi, xResOff); w32(1, xResOff + 4);
   w32(dpi, yResOff); w32(1, yResOff + 4);
 
@@ -268,6 +278,7 @@ function main() {
   const opts = {
     formula: nums(getValue('--formula', '20,30,20,100')),
     kOnly: argv.includes('--k-only'),
+    knockout: argv.includes('--knockout'),
     gates: gatesOpt.value,
     dropPaper: paperOpt.value,
     dpi: Number(getValue('--dpi', '600')),

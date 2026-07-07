@@ -36,5 +36,13 @@
   "license": "MIT",
   "dependencies": {
     "pngjs": "^7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dgaidula/lineart-rich-black.git"
+  },
+  "homepage": "https://github.com/dgaidula/lineart-rich-black#readme",
+  "bugs": {
+    "url": "https://github.com/dgaidula/lineart-rich-black/issues"
   }
 }

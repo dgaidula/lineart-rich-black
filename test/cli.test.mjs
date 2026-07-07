@@ -230,3 +230,18 @@ test('without --knockout output stays 4-sample with no ExtraSamples', () => {
   assert.equal(t.tags[277].value, 4);
   assert.equal(t.tags[338], undefined);
 });
+
+test('--knockout-bg clears only border-connected background', () => {
+  // 5x5: white canvas, black ring at ring distance 1, white center (enclosed)
+  const png = makePng(5, 5, 3, (x, y) => {
+    const edge = x === 0 || y === 0 || x === 4 || y === 4;
+    const center = x === 2 && y === 2;
+    return edge ? [255, 255, 255] : center ? [255, 255, 255] : [0, 0, 0];
+  });
+  const t = readTiff(convert(png, { knockoutBg: true }));
+  assert.equal(t.tags[338].value, 2);
+  const a = (x, y) => t.cmyk[(y * 5 + x) * 5 + 4];
+  assert.equal(a(0, 0), 0);     // border background: transparent
+  assert.equal(a(1, 1), 255);   // black ring: opaque
+  assert.equal(a(2, 2), 255);   // ENCLOSED white: opaque (stays paper)
+});

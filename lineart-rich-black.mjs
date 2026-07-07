@@ -27,6 +27,10 @@
 //                       transparent, solids opaque, anti-aliased edges
 //                       partial. Plates are unchanged, so the image still
 //                       looks correct in apps that ignore alpha.
+//   --knockout-bg       like --knockout but only BORDER-CONNECTED background
+//                       clears: enclosed paper inside the artwork (a polaroid
+//                       frame, white costume, speech balloon) stays opaque
+//                       white. Use when white is part of the subject.
 //   --gates [B,W]       svg-color-rinse-style snap: tints >=B% become solid,
 //                       <=W% become paper (default 80,10 when flag given)
 //   --drop-paper [T,S]  force light, low-saturation pixels (tint <= T%,
@@ -80,12 +84,15 @@ export function toCmyk(img, opts = {}) {
     gates = null,          // [blackPct, whitePct] or null
     dropPaper = null,      // [maxTintPct, maxSatPct] or null
     knockout = false,      // add unassociated alpha = ink coverage
+    knockoutBg = false,    // alpha clears only border-connected background
   } = opts;
   const [fc, fm, fy, fk] = formula.map((v) => v / 100);
   const { width, height, channels, pixels } = img;
-  const spp = knockout ? 5 : 4;
+  const anyAlpha = knockout || knockoutBg;
+  const spp = anyAlpha ? 5 : 4;
   const out = Buffer.alloc(width * height * spp);
   const solidAt = gates ? gates[0] / 100 : 0.99;
+  const tints = knockoutBg ? new Float32Array(width * height) : null;
 
   for (let p = 0, o = 0; p < width * height; p++, o += spp) {
     const i = p * channels;
@@ -119,7 +126,28 @@ export function toCmyk(img, opts = {}) {
       out[o + 2] = Math.round(tint * fy * 255);
       out[o + 3] = Math.round(tint * fk * 255);
     }
-    if (knockout) out[o + 4] = Math.round(tint * 255); // alpha = ink coverage
+    if (anyAlpha) out[o + 4] = Math.round(tint * 255); // alpha = ink coverage
+    if (tints) tints[p] = tint;
+  }
+  if (knockoutBg) {
+    // flood from the borders through light pixels (tint < 0.5): that region
+    // keeps coverage alpha (background fades out through AA edges); everything
+    // else — art AND enclosed paper like a polaroid frame — becomes opaque.
+    const mask = new Uint8Array(width * height);
+    const q = [];
+    const seed = (p) => { if (!mask[p] && tints[p] < 0.5) { mask[p] = 1; q.push(p); } };
+    for (let x = 0; x < width; x++) { seed(x); seed((height - 1) * width + x); }
+    for (let y = 0; y < height; y++) { seed(y * width); seed(y * width + width - 1); }
+    while (q.length) {
+      const p = q.pop(); const x = p % width;
+      if (x > 0) seed(p - 1);
+      if (x < width - 1) seed(p + 1);
+      if (p >= width) seed(p - width);
+      if (p < width * (height - 1)) seed(p + width);
+    }
+    for (let p = 0; p < width * height; p++) {
+      if (!mask[p]) out[p * 5 + 4] = 255; // interior: fully opaque (incl. paper)
+    }
   }
   return out;
 }
@@ -133,8 +161,8 @@ const T = { SHORT: 3, LONG: 4, RATIONAL: 5, UNDEFINED: 7 };
  * opts: { dpi=600, littleEndian=true, compression='deflate'|'none', icc=Buffer|null }
  */
 export function encodeTiff(cmyk, width, height, opts = {}) {
-  const { dpi = 600, littleEndian = true, compression = 'deflate', icc = null, knockout = false } = opts;
-  const spp = knockout ? 5 : 4;
+  const { dpi = 600, littleEndian = true, compression = 'deflate', icc = null, knockout = false, knockoutBg = false } = opts;
+  const spp = (knockout || knockoutBg) ? 5 : 4;
   const strip = compression === 'deflate' ? zlib.deflateSync(cmyk, { level: 9 }) : cmyk;
   const compTag = compression === 'deflate' ? 8 : 1;
 
@@ -161,7 +189,7 @@ export function encodeTiff(cmyk, width, height, opts = {}) {
     [296, T.SHORT, 1, 2],                // ResolutionUnit: inch
     [332, T.SHORT, 1, 1],                // InkSet: CMYK
   ];
-  if (knockout) entries.push([338, T.SHORT, 1, 2]); // ExtraSamples: unassociated alpha
+  if (knockout || knockoutBg) entries.push([338, T.SHORT, 1, 2]); // ExtraSamples: unassociated alpha
   if (icc) entries.push([34675, T.UNDEFINED, icc.length, iccOff]);
   entries.sort((a, b) => a[0] - b[0]);
 
@@ -278,7 +306,8 @@ function main() {
   const opts = {
     formula: nums(getValue('--formula', '20,30,20,100')),
     kOnly: argv.includes('--k-only'),
-    knockout: argv.includes('--knockout'),
+    knockout: argv.includes('--knockout') && !argv.includes('--knockout-bg'),
+    knockoutBg: argv.includes('--knockout-bg'),
     gates: gatesOpt.value,
     dropPaper: paperOpt.value,
     dpi: Number(getValue('--dpi', '600')),

@@ -1,0 +1,40 @@
+{
+  "name": "lineart-rich-black",
+  "version": "1.0.0",
+  "description": "Convert B/W line-art PNGs to print-ready CMYK TIFFs with exact rich-black plate values. pngjs for decoding; purpose-built CMYK TIFF encoder (no Node library offers byte-order/InkSet/ICC-assign control).",
+  "type": "module",
+  "bin": {
+    "lineart-rich-black": "./lineart-rich-black.mjs"
+  },
+  "exports": {
+    ".": "./lineart-rich-black.mjs"
+  },
+  "files": [
+    "lineart-rich-black.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "cmyk",
+    "tiff",
+    "rich-black",
+    "line-art",
+    "print",
+    "prepress",
+    "png",
+    "plates",
+    "gracol",
+    "swop",
+    "cli"
+  ],
+  "author": "Dan Gaidula <dan@iceboxind.com>",
+  "license": "MIT",
+  "dependencies": {
+    "pngjs": "^7.0.0"
+  }
+}

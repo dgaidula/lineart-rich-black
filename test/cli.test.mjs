@@ -214,7 +214,9 @@ test('--knockout adds unassociated alpha = ink coverage', () => {
   const buf = convert(png, { formula: [20, 30, 20, 100], knockout: true });
   const t = readTiff(buf);
   assert.equal(t.tags[277].value, 5);          // SamplesPerPixel
-  assert.equal(t.tags[338].value, 2);          // ExtraSamples: unassociated alpha
+  assert.equal(t.tags[338].value, 1);          // ExtraSamples: ASSOCIATED alpha
+  const ps = t.tags[34377];
+  assert.ok(ps, 'Photoshop 8BIM resources present');
   assert.equal(t.tags[258].count, 5);          // 5 x 8-bit
   const px5 = (x) => Array.from(t.cmyk.subarray(x * 5, x * 5 + 5));
   assert.equal(px5(0)[4], 255);                // solid black: opaque
@@ -239,7 +241,7 @@ test('--knockout-bg clears only border-connected background', () => {
     return edge ? [255, 255, 255] : center ? [255, 255, 255] : [0, 0, 0];
   });
   const t = readTiff(convert(png, { knockoutBg: true }));
-  assert.equal(t.tags[338].value, 2);
+  assert.equal(t.tags[338].value, 1);
   const a = (x, y) => t.cmyk[(y * 5 + x) * 5 + 4];
   assert.equal(a(0, 0), 0);     // border background: transparent
   assert.equal(a(1, 1), 255);   // black ring: opaque

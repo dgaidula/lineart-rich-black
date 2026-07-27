@@ -32,7 +32,7 @@
     "swop",
     "cli"
   ],
-  "author": "Dan Gaidula <dan@iceboxind.com>",
+  "author": "Danniel T. Gaidula <dan@iceboxind.com>",
   "license": "MIT",
   "dependencies": {
     "pngjs": "^7.0.0"

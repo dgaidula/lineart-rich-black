@@ -4,7 +4,7 @@
   "description": "Convert B/W line-art PNGs to print-ready CMYK TIFFs with exact rich-black plate values. pngjs for decoding; purpose-built CMYK TIFF encoder (no Node library offers byte-order/InkSet/ICC-assign control).",
   "type": "module",
   "bin": {
-    "lineart-rich-black": "./lineart-rich-black.mjs"
+    "lineart-rich-black": "lineart-rich-black.mjs"
   },
   "exports": {
     ".": "./lineart-rich-black.mjs"

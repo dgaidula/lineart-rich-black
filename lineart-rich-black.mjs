@@ -52,7 +52,7 @@
 // Also importable as a library:
 //   import { decodePng, encodeTiff, convert } from 'lineart-rich-black';
 
-import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import zlib from 'node:zlib';
 import path from 'node:path';
 import process from 'node:process';
@@ -367,4 +367,9 @@ function main() {
   console.log(`${done} converted, ${skipped} skipped (existing)`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// Resolve symlinks before comparing: npm installs bins as symlinks, so argv[1]
+// is the link path while import.meta.url is the real path, and a plain
+// comparison silently skips main() (exit 0, no output). Same fix as
+// contact-sheet-cli 1.2.0.
+const __entry = process.argv[1] ? (() => { try { return realpathSync(process.argv[1]); } catch { return process.argv[1]; } })() : null;
+if (__entry && import.meta.url === pathToFileURL(__entry).href) main();
